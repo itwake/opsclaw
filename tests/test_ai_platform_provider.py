@@ -11,7 +11,7 @@ from src.efp_runtime.llm.provider import (
     ProviderTransportError,
     RecordingTransport,
 )
-from src.efp_runtime.llm.request import ProviderRequest
+from src.efp_runtime.llm.request import ProviderRequest, RequestToolSchema
 from src.efp_runtime.loop import RuntimeRequest
 
 
@@ -199,6 +199,52 @@ def test_ai_platform_provider_removes_metadata_from_payload():
     assert payload["model"] == "gpt-5.4"
     assert payload["reasoning_effort"] == "high"
     assert payload["user"] == "uc"
+
+
+def _ai_platform_request(*, with_tools: bool) -> RuntimeRequest:
+    tools = (
+        [RequestToolSchema(id="read_file", name="read_file", description="Read a file", json_schema={"type": "object"})]
+        if with_tools
+        else []
+    )
+    return RuntimeRequest(
+        session_id="session-1",
+        messages=[],
+        iteration=1,
+        max_iterations=1,
+        metadata={"request_id": "request-1"},
+        provider_request=ProviderRequest(messages=[], tools=tools, metadata={"request_id": "request-1"}),
+    )
+
+
+@pytest.mark.parametrize("model", ["gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6-sol", "ai_platform/gpt-5.6-terra"])
+def test_ai_platform_gpt56_with_tools_disables_reasoning_effort(model):
+    # The gateway's /v1/chat/completions rejects function tools combined with a
+    # reasoning effort for gpt-5.6 ("set reasoning_effort to 'none'").
+    provider = AIPlatformProvider(transport=RecordingTransport([]), model=model, reasoning_effort="high")
+
+    payload = provider.build_payload(_ai_platform_request(with_tools=True))
+
+    assert payload["tools"]
+    assert payload["reasoning_effort"] == "none"
+
+
+def test_ai_platform_gpt56_without_tools_keeps_reasoning_effort():
+    provider = AIPlatformProvider(transport=RecordingTransport([]), model="gpt-5.6-terra", reasoning_effort="high")
+
+    payload = provider.build_payload(_ai_platform_request(with_tools=False))
+
+    assert not payload.get("tools")
+    assert payload["reasoning_effort"] == "high"
+
+
+def test_ai_platform_gpt54_with_tools_keeps_reasoning_effort():
+    provider = AIPlatformProvider(transport=RecordingTransport([]), model="gpt-5.4", reasoning_effort="high")
+
+    payload = provider.build_payload(_ai_platform_request(with_tools=True))
+
+    assert payload["tools"]
+    assert payload["reasoning_effort"] == "high"
 
 
 def test_build_ai_platform_provider_requires_chat_host(monkeypatch):

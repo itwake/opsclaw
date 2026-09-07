@@ -923,6 +923,19 @@ class AIPlatformHTTPTransport:
         return data
 
 
+# Model families the AI Platform chat/completions gateway refuses to serve with
+# both function tools and a reasoning effort on the same request.
+AI_PLATFORM_CHAT_NO_REASONING_WITH_TOOLS_PREFIXES: tuple[str, ...] = ("gpt-5.6",)
+AI_PLATFORM_DISABLED_REASONING_EFFORT = "none"
+
+
+def _ai_platform_chat_rejects_reasoning_with_tools(model: Any) -> bool:
+    model_id = str(model or "").strip().lower()
+    if "/" in model_id:
+        model_id = model_id.split("/", 1)[1]
+    return model_id.startswith(AI_PLATFORM_CHAT_NO_REASONING_WITH_TOOLS_PREFIXES)
+
+
 class AIPlatformProvider(OpenAICompatibleProvider):
     """OpenAI-compatible facade for the AI Platform chat/completions endpoint."""
 
@@ -958,7 +971,15 @@ class AIPlatformProvider(OpenAICompatibleProvider):
         # extension field even though it is useful for other providers.
         payload.pop("metadata", None)
         if self.reasoning_effort:
-            payload.setdefault("reasoning_effort", self.reasoning_effort)
+            if payload.get("tools") and _ai_platform_chat_rejects_reasoning_with_tools(payload.get("model") or self.model):
+                # The gateway fronts gpt-5.6 through /v1/chat/completions,
+                # which rejects function tools combined with a reasoning
+                # effort ("use /v1/responses or set reasoning_effort to
+                # 'none'"). There is no responses endpoint behind the gateway,
+                # so tools win and the effort is disabled for that request.
+                payload["reasoning_effort"] = AI_PLATFORM_DISABLED_REASONING_EFFORT
+            else:
+                payload.setdefault("reasoning_effort", self.reasoning_effort)
         if self._usercase:
             payload.setdefault("user", self._usercase)
         return payload
