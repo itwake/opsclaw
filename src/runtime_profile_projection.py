@@ -113,7 +113,7 @@ def project_llm_for_runtime(llm: dict, runtime_type: str) -> dict:
             projected["api_key"] = token
         else:
             projected.pop("api_key", None)
-    # For ai_platform the rich block (llm.ai_platform: chat/ib2b endpoints +
+    # For ai_platform the rich block (llm.ai_platform: chat/responses/ib2b endpoints +
     # auth credentials) is preserved as-is for the runtime to consume.
     return projected
 

@@ -14,8 +14,9 @@
 # LLM Configuration (REQUIRED)
 # ============================================
 llm:
-  # EFP runtime native mode supports GitHub Copilot only.
-  # Accepted aliases: github_copilot, github-copilot, copilot
+  # EFP runtime native mode supports GitHub Copilot and AI Platform.
+  # Accepted aliases: github_copilot, github-copilot, copilot,
+  # ai_platform, ai-platform
   provider: "github_copilot"
   # Optional override. Blank lets EFP use the exchanged Copilot token proxy-ep
   # when present, otherwise https://api.githubcopilot.com.
@@ -26,7 +27,24 @@ llm:
   api_key: "ghp_YOUR_GITHUB_TOKEN"
   model: "gpt-5.6-terra"
   reasoning_effort: "high"
-  
+
+  # AI Platform (provider: ai_platform). The Portal-managed runtime profile
+  # supplies chat/ib2b/auth; an optional Responses endpoint takes precedence
+  # over chat/completions when its uri is set (host defaults to chat.host).
+  # ai_platform:
+  #   chat:
+  #     host: "https://<gateway-host>"
+  #     uri: "/v1/api/v1/chat/completions"
+  #   responses:
+  #     uri: "/v1/<use-case-id>/responses"
+  #   ib2b:
+  #     host: "https://<ib2b-host>"
+  #     uri: "/dsp/token"
+  #   auth:
+  #     username: ""
+  #     password: ""
+  #     usercase: ""
+
   max_tokens: 128000
   allow_lower_max_tokens_than_model_limit: false
   model_limits:

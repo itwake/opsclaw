@@ -16,6 +16,7 @@ from src.workspace_defaults import resolve_runtime_workspace
 from src.efp_runtime.event_bus import RuntimeEventBus
 from src.efp_runtime.events import RuntimeEvent
 from src.efp_runtime.llm.provider import (
+    ai_platform_endpoint_is_responses,
     DEFAULT_AI_PLATFORM_TRACKING_PREFIX,
     DEFAULT_AI_PLATFORM_TRUST_TOKEN_HEADER,
     DEFAULT_COPILOT_REASONING_EFFORT,
@@ -600,18 +601,23 @@ def _build_ai_platform_provider(
     llm_config = _request_llm_config(execution_metadata)
     ap = llm_config.get("ai_platform") if isinstance(llm_config.get("ai_platform"), dict) else {}
     chat = ap.get("chat") if isinstance(ap.get("chat"), dict) else {}
+    responses = ap.get("responses") if isinstance(ap.get("responses"), dict) else {}
     ib2b = ap.get("ib2b") if isinstance(ap.get("ib2b"), dict) else {}
     auth = ap.get("auth") if isinstance(ap.get("auth"), dict) else {}
 
-    chat_host = str(chat.get("host") or "").strip()
-    if not chat_host:
+    # A configured Responses path wins: it accepts function tools together
+    # with a reasoning effort, which the gateway's chat/completions refuses for
+    # the gpt-5.6 line. The Responses block may omit its host and share chat's.
+    endpoint_config = responses if str(responses.get("uri") or "").strip() else chat
+    endpoint_host = str(endpoint_config.get("host") or chat.get("host") or "").strip()
+    if not endpoint_host:
         raise RuntimeChatError(
-            "AI Platform chat host is required (llm.ai_platform.chat.host).",
+            "AI Platform endpoint host is required (llm.ai_platform.responses.host or llm.ai_platform.chat.host).",
             status_code=400,
             error_type="invalid_config",
             details={"provider": "ai_platform"},
         )
-    chat_endpoint = _join_url(chat_host, str(chat.get("uri") or "/v1/api/v1/chat/completions"))
+    chat_endpoint = _join_url(endpoint_host, str(endpoint_config.get("uri") or "/v1/api/v1/chat/completions"))
     ib2b_host = str(ib2b.get("host") or "").strip()
     ib2b_endpoint = _join_url(ib2b_host, str(ib2b.get("uri") or "")) if ib2b_host else ""
     usercase = str(auth.get("usercase") or "").strip()
@@ -630,6 +636,7 @@ def _build_ai_platform_provider(
     return AIPlatformProvider(
         transport=transport,
         model=model,
+        endpoint="responses" if ai_platform_endpoint_is_responses(chat_endpoint) else "chat",
         stream=True,
         metadata={"gateway": "runtime_api"},
         reasoning_effort=_resolve_reasoning_effort(llm_config),

@@ -651,12 +651,25 @@ DEFAULT_AI_PLATFORM_TRUST_TOKEN_HEADER = "X-XXXX-E2E-Trust-Token"
 DEFAULT_AI_PLATFORM_TRACKING_PREFIX = "EFP"
 
 
+def ai_platform_endpoint_is_responses(endpoint_url: Any) -> bool:
+    """Report whether an AI Platform endpoint URL is a Responses API path.
+
+    Shared by the transport (Bearer header) and the provider factory (payload
+    shape), and mirrored by the Portal's runtime profile smoke test, so the
+    three never disagree on which URLs count as Responses.
+    """
+
+    path = urllib_parse.urlsplit(str(endpoint_url or "")).path.rstrip("/").lower()
+    return path.endswith("/responses") or path.endswith("/responses/compact")
+
+
 class AIPlatformHTTPTransport:
-    """HTTP JSON transport for the AI Platform OpenAI-compatible chat endpoint.
+    """HTTP JSON transport for the AI Platform chat or Responses endpoint.
 
     Auth is two-legged: username/password/usercase are exchanged at an iB2B STS
     endpoint for a short-lived JWT ("trust token"), which is sent in a
-    configurable trust-token header on each chat call (plus tracking ids). The
+    configurable trust-token header on each model call (plus tracking ids); a
+    Responses endpoint additionally receives it as a standard Bearer token. The
     JWT is re-exchanged when missing or within a refresh margin of expiry, and
     once reactively on a 401/403.
     """
@@ -771,13 +784,16 @@ class AIPlatformHTTPTransport:
 
     def _headers(self, *, stream: bool = False) -> dict[str, str]:
         tracking = self._tracking_id()
-        return {
+        headers = {
             "Content-Type": "application/json",
             "Accept": "text/event-stream" if stream else "application/json",
             self._trust_token_header: self._token,
             "x-correlation-id": tracking,
             "x-usersession-id": tracking,
         }
+        if ai_platform_endpoint_is_responses(self.endpoint):
+            headers["Authorization"] = "Bearer {0}".format(self._token)
+        return headers
 
     @staticmethod
     def _should_reexchange(exc: urllib_error.HTTPError) -> bool:
@@ -924,13 +940,14 @@ class AIPlatformHTTPTransport:
 
 
 class AIPlatformProvider(OpenAICompatibleProvider):
-    """OpenAI-compatible facade for the AI Platform chat/completions endpoint."""
+    """OpenAI-compatible facade for the AI Platform chat or Responses endpoint."""
 
     def __init__(
         self,
         *,
         transport: ProviderTransport,
         model: str,
+        endpoint: str = "chat",
         instructions: Optional[str] = None,
         stream: bool = False,
         metadata: Optional[Mapping[str, Any]] = None,
@@ -944,7 +961,7 @@ class AIPlatformProvider(OpenAICompatibleProvider):
         super().__init__(
             model=model,
             transport=transport,
-            endpoint="chat",
+            endpoint=endpoint,
             instructions=instructions,
             stream=stream,
             metadata=provider_metadata,
@@ -954,9 +971,15 @@ class AIPlatformProvider(OpenAICompatibleProvider):
 
     def build_payload(self, request: RuntimeRequest) -> dict[str, Any]:
         payload = super().build_payload(request)
-        # The AI Platform chat endpoint rejects the EFP/OpenAI-compatible
-        # extension field even though it is useful for other providers.
+        # The AI Platform endpoints reject the EFP/OpenAI-compatible extension
+        # field even though it is useful for other providers.
         payload.pop("metadata", None)
+        if self.endpoint == "responses":
+            # The base projection already carries the effort as
+            # ``reasoning: {effort}``; the gateway's chat/completions-only
+            # ``reasoning_effort`` and ``user`` fields must not be added (the
+            # use case is routed through the Responses URL instead).
+            return _sanitize_copilot_responses_payload(payload)
         if self.reasoning_effort:
             payload.setdefault("reasoning_effort", self.reasoning_effort)
         if self._usercase:
