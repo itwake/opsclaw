@@ -183,9 +183,10 @@ class Config:
             "context_projection": True,
             "response_flow": True,
             "tool_loop": True,
-            # AI Platform rich config (chat/ib2b endpoints + credentials).
+            # AI Platform rich config (chat/responses/ib2b endpoints + credentials).
             "ai_platform": {
                 "chat": {"host": True, "uri": True},
+                "responses": {"host": True, "uri": True},
                 "ib2b": {"host": True, "uri": True},
                 "auth": {
                     "username": True,
