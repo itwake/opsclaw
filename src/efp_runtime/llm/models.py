@@ -21,9 +21,17 @@ SUPPORTED_COPILOT_MODEL_IDS = (
     "gpt-5.6-terra",
 )
 
-# AI Platform (enterprise gateway) models.
+# AI Platform (enterprise gateway) models. Must stay aligned with the Portal
+# catalog (app/contracts/llm_catalog.py AI_PLATFORM_MODELS): the runtime coerces
+# any model outside this tuple back to DEFAULT_AI_PLATFORM_MODEL, so a model the
+# Portal offers but this list lacks is silently replaced by gpt-5.4.
 DEFAULT_AI_PLATFORM_MODEL = "gpt-5.4"
-AI_PLATFORM_MODEL_IDS = ("gpt-5.4",)
+AI_PLATFORM_MODEL_IDS = (
+    "gpt-5.4",
+    "gpt-5.6-luna",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+)
 
 
 @dataclass(frozen=True)
@@ -53,9 +61,9 @@ def resolve_model_context_profile(
     The catalog is keyed by model id alone: a context window is a property of
     the model, not of the gateway serving it. ``provider_id`` is accepted (and
     a ``provider/model`` prefix is stripped from ``model``) so callers can pass
-    a qualified id, but it does not gate the lookup - ai_platform serves
-    ``gpt-5.4`` (see ``AI_PLATFORM_MODEL_IDS``) with the same 1M window as
-    Copilot, and this profile is the default source of the native runtime's
+    a qualified id, but it does not gate the lookup - ai_platform serves the
+    same GPT-5.x line (see ``AI_PLATFORM_MODEL_IDS``) with the same 1M window
+    as Copilot, and this profile is the default source of the native runtime's
     context budget, so falling back to the 64k profile purely because of a
     provider id would compact those sessions roughly seven times too early.
     """
